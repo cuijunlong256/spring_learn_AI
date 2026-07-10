@@ -5,6 +5,7 @@ package com.atguigu.study.controller;
 
 import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.agent.hook.modelcalllimit.ModelCallLimitHook;
@@ -12,6 +13,7 @@ import com.alibaba.cloud.ai.graph.agent.renderer.SaaStTemplateRenderer;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
 import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.template.TemplateRenderer;
@@ -19,7 +21,9 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -83,23 +87,54 @@ public class ToolsExaplem {
 
 
 
+// 创建一个ReactAgent实例，使用建造者模式进行配置
        ReactAgent agent = ReactAgent.builder()
+    // 设置代理名称为"custom_template_agent"
                .name("custom_template_agent")
+    // 配置使用的聊天模型
                .model(chatModel)
+    // 设置系统提示词，用于指导AI的行为
                .systemPrompt(systemPrompt)
+    // 设置指令，告诉AI需要执行的具体任务
                .instruction(instruction)
+    // 自定义模板渲染器，用于处理输入输出的格式化
                .templateRenderer(customRenderer)
+    // 配置保存器，使用MemorySaver来存储会话状态
                .saver(new MemorySaver())
                .hooks(new SpringAATest.LoggingHook(), ModelCallLimitHook.builder().runLimit(3).build(),new SpringAATest.CustomStopConditionHook())
                .interceptors(new SpringAATest.GuardrailInterceptor(),new SpringAATest.ToolMonitoringInterceptor())
                .tools(toolCallback,accountTool)
                .build();
-       AssistantMessage call = agent.call("我叫张三", config);
-       System.out.println(call.getText());
-       AssistantMessage call1 = agent.call("我叫什么", config);
-       System.out.println(call1.getText());
-       AssistantMessage call2 = agent.call("我的账户信息", config);
-       System.out.println(call2.getText());
+//       AssistantMessage call = agent.call("我叫张三", config);
+//       System.out.println(call.getText());
+//       AssistantMessage call1 = agent.call("我叫什么", config);
+//       System.out.println(call1.getText());
+//       AssistantMessage call2 = agent.call("我的账户信息", config);
+//       System.out.println(call2.getText());
+       Map<String, Object> inputs = Map.of(
+               "input", """ 
+                        请执行以下任务，每一步都需要单独思考和回答：
+                        第一步：介绍现在的主流框架特点
+                        第二步：介绍一下SOA架构
+                        第三步：介绍Spring框架的核心理念
+                        第四步：介绍分布式架构
+                        """,
+               "role", "技术专家",
+               "domain", "Java企业级开发",
+               "language", "中文",
+               "topic", "Spring框架",
+               "style", "简洁易懂"
+       );
+//       agent.call("我叫什么", config);
+       Optional<OverAllState> result = agent.invoke(inputs);
+       if (result.isPresent()) {
+           List<Message> messages = (List<Message>) result.get().value("messages").orElse(List.of());
+           for (Message message : messages) {
+               if (message instanceof AssistantMessage) {
+                   System.out.println("Agent回复: " + ((AssistantMessage) message).getText());
+               }
+           }
+       }
 
    }
 
