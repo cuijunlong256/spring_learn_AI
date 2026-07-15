@@ -39,9 +39,8 @@ import java.util.Map;
 
 @Service
 public class RemoteMcpToolsService {
-    private final org.slf4j.Logger logger = LoggerFactory.getLogger(RemoteMcpToolsService.class);
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(RemoteMcpToolsService.class);
 
-    @Autowired
     private final ToolCallbackProvider toolCallbackProvider;
 
     public RemoteMcpToolsService(ToolCallbackProvider toolCallbackProvider) {
@@ -241,7 +240,7 @@ public class RemoteMcpToolsService {
                 .threadId(travel_planning_session)
                 .build();
         Flux<NodeOutput> stream = agent.stream(message, config);
-        StringBuffer answerString = new StringBuffer();
+        StringBuilder answerString = new StringBuilder();
         stream.doOnNext(output -> {
             if (output.node().equals("_AGENT_MODEL_")) {
                 answerString.append(((StreamingOutput<?>) output).message().getText());
@@ -249,8 +248,8 @@ public class RemoteMcpToolsService {
                 answerString.append("\nTool Call:").append(((ToolResponseMessage) ((StreamingOutput<?>) output).message()).getResponses().get(0)).append("\n");
             }
                 })
-                .doOnComplete(() -> System.out.println(answerString))
-                .doOnError(e -> System.err.println("Stream Processing Error: " + e.getMessage()))
+                .doOnComplete(() -> logger.info("Agent response: {}", answerString))
+                .doOnError(e -> logger.error("Stream Processing Error", e))
                 .blockLast();
 
         return answerString.toString();
@@ -263,9 +262,9 @@ public class RemoteMcpToolsService {
         ChatClient chatClient = ChatClient.builder(chatModel)
                 .build();
         ToolCallback[] toolCallbacks = toolCallbackProvider.getToolCallbacks();
-        System.out.printf("""
+        logger.info("""
                         ==============================Find the tools from spring ToolCallbackProvider==============================
-                        %s
+                        {}
                         """,
                 JSON.toJSONString(toolCallbacks));
         ChatClient.ChatClientRequestSpec callbacks = chatClient
