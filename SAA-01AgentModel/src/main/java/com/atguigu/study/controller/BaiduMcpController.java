@@ -1,6 +1,8 @@
 package com.atguigu.study.controller;
 
+import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
 import com.atguigu.study.service.MailService;
+import com.atguigu.study.service.RemoteMcpToolsService;
 import jakarta.annotation.Resource;
 import jakarta.mail.MessagingException;
 import org.springframework.ai.chat.client.ChatClient;
@@ -48,7 +50,22 @@ public class BaiduMcpController {
         return chatClient.prompt(message).stream().content();
     }
 
+    @Autowired
+    private RemoteMcpToolsService remoteMcpToolsService;
 
+    @GetMapping("/mcpWithReactSpring")
+    public String callRemoteMcpToolsWithSpringBootExample(@RequestParam("msg") String message)  throws GraphRunnerException{
+        return remoteMcpToolsService.remoteMcpToolsReactWithSpringBootExample(message);
+    }
 
+    @GetMapping("/mcpWithReact")
+    public String remoteMcpToolsReactWithoutSpringBootExample(@RequestParam("msg") String message) throws GraphRunnerException {
+       return remoteMcpToolsService.remoteMcpToolsReactWithoutSpringBootExample(message);
+    }
+
+    @GetMapping("/mcpWithSpringChat")
+    public String remoteMcpToolsWithChatCliAndSpringBootExample(@RequestParam("msg") String message) {
+       return remoteMcpToolsService.remoteMcpToolsWithChatCliAndSpringBootExample(message);
+    }
 
 }
