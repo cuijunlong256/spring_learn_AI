@@ -26,11 +26,11 @@ public class LllmConfig {
      * @param chatModel ChatModel类型的参数，用于构建ChatClient，提供与聊天模型交互的能力
      * @return 返回一个配置好的ChatClient实例，可以用于与聊天模型进行交互
      */
-    @Bean
-    public ChatClient chatClient(ChatModel chatModel) {
-        // 使用ChatClient的构建器模式，传入chatModel参数来创建ChatClient实例
-        return ChatClient.builder(chatModel).build();
-    }
+//    @Bean
+//    public ChatClient chatClient(ChatModel chatModel) {
+//        // 使用ChatClient的构建器模式，传入chatModel参数来创建ChatClient实例
+//        return ChatClient.builder(chatModel).build();
+//    }
 
 }
 

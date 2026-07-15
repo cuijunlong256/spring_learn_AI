@@ -11,15 +11,21 @@ import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.agent.hook.modelcalllimit.ModelCallLimitHook;
 import com.alibaba.cloud.ai.graph.agent.renderer.SaaStTemplateRenderer;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
+import com.alibaba.cloud.ai.graph.checkpoint.savers.redis.RedisSaver;
 import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.template.TemplateRenderer;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.ai.tool.function.FunctionToolCallback;
+import org.springframework.ai.tool.resolution.StaticToolCallbackResolver;
 
 import java.util.List;
 import java.util.Map;
@@ -82,11 +88,35 @@ public class ToolsExaplem {
        ToolCallback accountTool = FunctionToolCallback
                .builder("get_account_info", new AccountInfoTool())
                .description("Get the current user's account information")
-               .inputType(String.class)
+               .inputType(AccountInfoRequest.class)
                .build();
 
+       // 配置持久化存储
+       MemorySaver memorySaver = new MemorySaver();
+       // 创建工具
+       ToolCallback saveUserInfoTool = createSaveUserInfoTool();
+       ToolCallback getUserInfoTool = createGetUserInfoTool();
 
+       // 创建带有 @Tool 注解方法的工具对象
+       CalculatorTools calculatorTools = new CalculatorTools();
 
+       // 创建工具
+      ToolCallback searchTool = FunctionToolCallback.builder("search", new SearchToolWithContext())
+              .description("Search for information")
+              .inputType(SearchRequest.class)
+              .build();
+
+// 创建 ToolCallbackProvider
+       //不用使用已有的
+       ToolCallbackProvider toolProvider = new CustomToolCallbackProvider(List.of(searchTool));
+
+       ToolCallback calculatorTool = FunctionToolCallback.builder("calculator", new CalculatorFunctionWithRequest())
+               .description("Perform arithmetic calculations")
+               .inputType(CalculatorRequest.class)
+               .build();
+// 创建 StaticToolCallbackResolver，包含所有工具
+       StaticToolCallbackResolver resolver = new StaticToolCallbackResolver(
+               List.of(calculatorTool, searchTool));
 // 创建一个ReactAgent实例，使用建造者模式进行配置
        ReactAgent agent = ReactAgent.builder()
     // 设置代理名称为"custom_template_agent"
@@ -103,7 +133,11 @@ public class ToolsExaplem {
                .saver(new MemorySaver())
                .hooks(new SpringAATest.LoggingHook(), ModelCallLimitHook.builder().runLimit(3).build(),new SpringAATest.CustomStopConditionHook())
                .interceptors(new SpringAATest.GuardrailInterceptor(),new SpringAATest.ToolMonitoringInterceptor())
-               .tools(toolCallback,accountTool)
+               .tools(toolCallback,accountTool, saveUserInfoTool, getUserInfoTool)
+               .methodTools(calculatorTools)
+               .toolNames("calculator", "search")
+               .resolver(resolver)
+               .toolCallbackProviders(toolProvider)
                .build();
 //       AssistantMessage call = agent.call("我叫张三", config);
 //       System.out.println(call.getText());
@@ -136,6 +170,31 @@ public class ToolsExaplem {
            }
        }
 
+       RunnableConfig config1 = RunnableConfig.builder()
+               .threadId("session_1")
+               .build();
+       AssistantMessage call4 = agent.call("Save user: userid: abc123, name: Foo, age: 25, email: foo@example.com", config1);
+
+       System.out.println(call4.getText());
+       // 第二个会话：获取用户信息，注意这里用的是不同的 threadId
+       RunnableConfig config2 = RunnableConfig.builder()
+               .threadId("session_2")
+               .build();
+
+       AssistantMessage call5 = agent.call("Get user info for user with id 'abc123'", config2);
+       System.out.println(call5.getText());
+
+       AssistantMessage call6 = agent.call("What is 15 + 27?", config);
+       System.out.println(call6.getText());
+       AssistantMessage call7 = agent.call("What is 8 * 9?", config);
+       System.out.println(call7.getText());
+
+       RunnableConfig config3 = RunnableConfig.builder()
+               .threadId("tool_names_session")
+               .build();
+
+       AssistantMessage call8 = agent.call("Calculate 25 + 4 and then search for information about the result", config3);
+       System.out.println(call8.getText());
    }
 
     public static void main(String[] args) throws GraphRunnerException {
@@ -143,11 +202,147 @@ public class ToolsExaplem {
         toolCall();
 
     }
+
+    /**
+     * 计算器请求类（用于复合类型）
+     */
+    public static class CalculatorRequest {
+        @JsonProperty(required = true)
+        @JsonPropertyDescription("First number for the calculation")
+        public int a;
+
+        @JsonProperty(required = true)
+        @JsonPropertyDescription("Second number for the calculation")
+        public int b;
+
+        public CalculatorRequest() {
+        }
+
+        public CalculatorRequest(int a, int b) {
+            this.a = a;
+            this.b = b;
+        }
+    }
+
+    /**
+     * 使用复合类型的计算器函数
+     */
+    public static class CalculatorFunctionWithRequest implements BiFunction<CalculatorRequest, ToolContext, String> {
+        @Override
+        public String apply(CalculatorRequest request, ToolContext toolContext) {
+            return String.valueOf(request.a + request.b);
+        }
+    }
+    /**
+     * 搜索请求参数
+     */
+    public record SearchRequest(@ToolParam(description = "搜索查询关键词") String query) {}
+
+    /**
+     * 带上下文的搜索工具
+     */
+    public static class SearchToolWithContext implements BiFunction<SearchRequest, ToolContext, String> {
+        @Override
+        public String apply(SearchRequest request, ToolContext toolContext) {
+            return "Search results for: " + request.query();
+        }
+    }
+
+    /**
+     * 自定义 ToolCallbackProvider 实现
+     */
+    public static class CustomToolCallbackProvider implements ToolCallbackProvider {
+        private final List<ToolCallback> toolCallbacks;
+
+        public CustomToolCallbackProvider(List<ToolCallback> toolCallbacks) {
+            this.toolCallbacks = toolCallbacks;
+        }
+
+        @Override
+        public ToolCallback[] getToolCallbacks() {
+            return toolCallbacks.toArray(new ToolCallback[0]);
+        }
+    }
+
+    /**
+     * 计算器工具类 - 使用 @Tool 注解
+     */
+    public static class CalculatorTools {
+        public static int callCount = 0;
+
+        @Tool(description = "Add two numbers together")
+        public String add(
+                @ToolParam(description = "First number") int a,
+                @ToolParam(description = "Second number") int b) {
+            callCount++;
+            return String.valueOf(a + b);
+        }
+
+        @Tool(description = "Multiply two numbers together")
+        public String multiply(
+                @ToolParam(description = "First number") int a,
+                @ToolParam(description = "Second number") int b) {
+            callCount++;
+            return String.valueOf(a * b);
+        }
+
+        @Tool(description = "Subtract second number from first number")
+        public String subtract(
+                @ToolParam(description = "First number") int a,
+                @ToolParam(description = "Second number") int b) {
+            callCount++;
+            return String.valueOf(a - b);
+        }
+    }
+
+
+
+
+    /**
+     * 创建保存用户信息工具
+     */
+    private static ToolCallback createSaveUserInfoTool() {
+        return FunctionToolCallback.builder("save_user_info", (SaveUserInfoRequest request) -> {
+                    // 简化的实现
+                    return "User info saved: " + request;
+                })
+                .description("Save user information with userId, name, age, and email")
+                .inputType(SaveUserInfoRequest.class)
+                .build();
+    }
+
+    /**
+     * 创建获取用户信息工具
+     */
+    private static ToolCallback createGetUserInfoTool() {
+        return FunctionToolCallback.builder("get_user_info", (GetUserInfoRequest request) -> {
+                    // 简化的实现
+                    return "User info for: " + request.userId();
+                })
+                .description("Get user information by userId")
+                .inputType(GetUserInfoRequest.class)
+                .build();
+    }
+    /**
+     * 保存用户信息请求参数
+     */
+    public record SaveUserInfoRequest(String userId, String name, Integer age, String email) {}
+
+    /**
+     * 获取用户信息请求参数
+     */
+    public record GetUserInfoRequest(String userId) {}
+
+    /**
+     * 账户信息请求参数
+     */
+    public record AccountInfoRequest(String query) {}
+
     /**
      * 账户信息工具
  * 这是一个实现了BiFunction接口的工具类，用于根据用户ID查询账户信息
      */
-    public static class AccountInfoTool implements BiFunction<String, ToolContext, String> {
+    public static class AccountInfoTool implements BiFunction<AccountInfoRequest, ToolContext, String> {
 
     /**
      * 用户数据库，存储了用户ID与账户信息的映射关系
@@ -177,12 +372,12 @@ public class ToolsExaplem {
 
     /**
      * 实现BiFunction的apply方法，处理查询请求
-     * @param query 查询参数，此实现中未使用
+     * @param request 查询参数，包含查询条件
      * @param toolContext 工具上下文，包含配置信息
      * @return 返回格式化的账户信息字符串，或错误信息
      */
         @Override
-        public String apply(String query, ToolContext toolContext) {
+        public String apply(AccountInfoRequest request, ToolContext toolContext) {
         // 从工具上下文中获取配置信息
             RunnableConfig config = (RunnableConfig) toolContext.getContext().get("config");
         // 从配置中获取用户ID

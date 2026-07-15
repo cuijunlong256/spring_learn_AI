@@ -1,0 +1,22 @@
+spring:
+  ai:
+    dashscope:
+      api-key: ${aiQwen_key}
+    mcp:
+      client:
+        type: async
+        request-timeout: 10s
+        toolcallback:
+          enabled: true
+        stdio:
+          servers-configuration: classpath:/mcp-server.json
+  mail:
+    host: smtp.163.com
+    username: cjldanlong256@163.com
+    password: GMyXMxJy64XUcT4Z
+    port: 465
+    protocol: smtps
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.ssl.enable: true
+      mail.smtp.ssl.auth: true
