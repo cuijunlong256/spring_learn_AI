@@ -20,3 +20,10 @@ spring:
     properties:
       mail.smtp.ssl.enable: true
       mail.smtp.ssl.auth: true
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.atguigu.study.controller:  DEBUG
+    org.springframework.ai: DEBUG
